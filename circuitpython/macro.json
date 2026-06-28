@@ -1,0 +1,31 @@
+{
+  "enabled": false,
+  "require_arm_pin": true,
+  "arm_pin": "GP14",
+  "startup_delay": 3.0,
+  "repeat": 1,
+  "steps": [
+    {
+      "op": "wait",
+      "seconds": 1.0
+    },
+    {
+      "op": "tap_pct",
+      "x": 50,
+      "y": 50,
+      "hold": 0.08,
+      "after": 0.4
+    },
+    {
+      "op": "swipe_pct",
+      "x1": 50,
+      "y1": 80,
+      "x2": 50,
+      "y2": 20,
+      "duration": 0.45,
+      "steps": 24,
+      "after": 0.5
+    }
+  ]
+}
+

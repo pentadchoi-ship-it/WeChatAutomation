@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">朋友圈自动化 MVP</string>
+    <string name="service_name">朋友圈自动化辅助服务</string>
+</resources>
+

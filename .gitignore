@@ -1,0 +1,23 @@
+# Local downloads and generated firmware artifacts
+downloads/
+build/
+*.uf2
+*.elf
+*.bin
+*.hex
+*.map
+
+# CircuitPython/macOS volume metadata
+._*
+.DS_Store
+
+# Android/Gradle local state
+android-app/.gradle/
+android-app/local.properties
+android-app/app/build/
+android-app/build/
+
+# IDE local files
+.idea/
+*.iml
+

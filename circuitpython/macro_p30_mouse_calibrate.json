@@ -1,0 +1,51 @@
+{
+  "enabled": false,
+  "require_arm_pin": true,
+  "arm_pin": "GP14",
+  "startup_delay": 2.0,
+  "repeat": 1,
+  "mouse_units": {
+    "width": 367,
+    "height": 900,
+    "home_x": 5000,
+    "home_y": 5000,
+    "chunk": 80,
+    "delay": 0.01
+  },
+  "steps": [
+    {
+      "op": "mouse_home",
+      "after": 0.5
+    },
+    {
+      "op": "mouse_tap_pct",
+      "x": 10,
+      "y": 10,
+      "hold": 0.08,
+      "after": 0.7
+    },
+    {
+      "op": "mouse_tap_pct",
+      "x": 50,
+      "y": 50,
+      "hold": 0.08,
+      "after": 0.7
+    },
+    {
+      "op": "mouse_tap_pct",
+      "x": 90,
+      "y": 90,
+      "hold": 0.08,
+      "after": 0.7
+    },
+    {
+      "op": "mouse_drag_pct",
+      "x1": 50,
+      "y1": 78,
+      "x2": 50,
+      "y2": 38,
+      "duration": 0.5,
+      "steps": 24
+    }
+  ]
+}
