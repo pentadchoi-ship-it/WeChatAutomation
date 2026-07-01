@@ -5,5 +5,9 @@
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:colorAccent">#2563EB</item>
     </style>
-</resources>
 
+    <style name="CommandTheme" parent="android:style/Theme.NoDisplay">
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowNoDisplay">true</item>
+    </style>
+</resources>

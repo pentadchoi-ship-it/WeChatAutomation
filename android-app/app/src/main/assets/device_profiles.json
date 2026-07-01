@@ -1,0 +1,43 @@
+{
+  "defaultProfile": "p30_1080x2340",
+  "profiles": [
+    {
+      "id": "xiaomi13_1080x2400",
+      "manufacturer": "Xiaomi",
+      "model": "2211133C",
+      "width": 1080,
+      "height": 2400,
+      "baselineWidth": 1080,
+      "baselineHeight": 2400,
+      "points": {
+        "discover_tab": [710, 2304],
+        "moments_entry": [215, 297],
+        "moments_camera": [990, 190],
+        "choose_from_album": [840, 2133],
+        "first_photo_check": [215, 301],
+        "album_done": [940, 2306],
+        "compose_text": [245, 346],
+        "compose_paste": [150, 272]
+      }
+    },
+    {
+      "id": "p30_1080x2340",
+      "manufacturer": "HUAWEI",
+      "model": "ELE-AL00",
+      "width": 1080,
+      "height": 2340,
+      "baselineWidth": 1080,
+      "baselineHeight": 2340,
+      "points": {
+        "discover_tab": [710, 2246],
+        "moments_entry": [215, 290],
+        "moments_camera": [990, 185],
+        "choose_from_album": [840, 2080],
+        "first_photo_check": [215, 293],
+        "album_done": [940, 2248],
+        "compose_text": [245, 337],
+        "compose_paste": [150, 265]
+      }
+    }
+  ]
+}

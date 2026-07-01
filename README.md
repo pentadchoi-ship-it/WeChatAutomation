@@ -15,6 +15,8 @@
 3. 点击右上角摄像头
 4. 点击“从手机相册选择”
 
+同时已加入两个本地保存 MVP：其一是朋友圈列表采集，保存若干屏截图和可见节点文本/描述；其二是单条朋友圈媒体保存，手动打开目标朋友圈第一张图片/视频后，通过微信原生长按菜单逐个执行“保存图片/保存视频”，并在本地记录保存会话 manifest。
+
 Android 工程说明见 [android-app/README.md](/Users/perrychoi/Documents/Raspberry/android-app/README.md)。
 
 ## 已观察到的原设备特征
