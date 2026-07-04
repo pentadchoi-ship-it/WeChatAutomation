@@ -4,6 +4,9 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 final class AutomationStore {
+    static final String ACTION_READ_CLIPBOARD =
+        "com.perrychoi.wechatmomentscontroller.READ_CLIPBOARD";
+
     static final String COMMAND_NONE = "none";
     static final String COMMAND_WECHAT_OBSERVE_ONLY = "wechat_observe_only";
     static final String COMMAND_WECHAT_ALBUM_TEST = "wechat_album_test";
@@ -23,7 +26,19 @@ final class AutomationStore {
     private static final String KEY_MOMENT_COLLECT_PAGES = "moment_collect_pages";
     private static final String KEY_POST_IMAGE_COUNT = "post_image_count";
     private static final String KEY_POST_IMAGE_ASSUME_VIEWER = "post_image_assume_viewer";
+    private static final String KEY_POST_CONTEXT_CAPTURE_TEXT = "post_context_capture_text";
     private static final String KEY_POINT_KEY = "point_key";
+    private static final String KEY_NATIVE_COPY_PHASE = "native_copy_phase";
+    private static final String KEY_NATIVE_COPY_SOURCE = "native_copy_source";
+    private static final String KEY_NATIVE_COPY_SENTINEL = "native_copy_sentinel";
+    private static final String KEY_NATIVE_COPY_ATTEMPTS = "native_copy_attempts";
+    private static final String KEY_NATIVE_COPY_LAST_ACTION_MS = "native_copy_last_action_ms";
+    private static final String KEY_NATIVE_COPY_TEXT = "native_copy_text";
+    private static final String KEY_NATIVE_COPY_SCRIPT_COPIED = "native_copy_script_copied";
+    private static final String KEY_POST_MEDIA_OPEN_PENDING = "post_media_open_pending";
+    private static final String KEY_POST_MEDIA_OPEN_STARTED_MS = "post_media_open_started_ms";
+    private static final String KEY_POST_MEDIA_OPEN_CANDIDATE = "post_media_open_candidate";
+    private static final String KEY_AUTOMATION_WAKE_TICK = "automation_wake_tick";
     private static final String DEFAULT_MOMENT_TEXT = "自动化测试，请忽略";
     private static final int DEFAULT_MOMENT_COLLECT_PAGES = 6;
     private static final int MIN_MOMENT_COLLECT_PAGES = 1;
@@ -65,18 +80,42 @@ final class AutomationStore {
     }
 
     static void requestPostImageCapture(Context context, int imageCount) {
-        requestPostImageCapture(context, imageCount, false);
+        requestPostImageCapture(context, imageCount, false, true);
     }
 
     static void requestPostImageCapture(Context context, int imageCount, boolean assumeViewer) {
-        prefs(context)
+        requestPostImageCapture(context, imageCount, assumeViewer, true);
+    }
+
+    static void requestPostImageCapture(
+        Context context,
+        int imageCount,
+        boolean assumeViewer,
+        boolean captureText
+    ) {
+        SharedPreferences.Editor editor = prefs(context)
             .edit()
             .putString(KEY_COMMAND, COMMAND_WECHAT_POST_IMAGE_CAPTURE)
             .putInt(KEY_POST_IMAGE_COUNT, clampPostImageCount(imageCount))
             .putBoolean(KEY_POST_IMAGE_ASSUME_VIEWER, assumeViewer)
+            .putBoolean(KEY_POST_CONTEXT_CAPTURE_TEXT, captureText)
             .putBoolean(KEY_STOP_REQUESTED, false)
-            .putString(KEY_LAST_STATUS, "已请求保存朋友圈图片")
-            .apply();
+            .remove(KEY_NATIVE_COPY_PHASE)
+            .remove(KEY_NATIVE_COPY_SOURCE)
+            .remove(KEY_NATIVE_COPY_SENTINEL)
+            .remove(KEY_NATIVE_COPY_ATTEMPTS)
+            .remove(KEY_NATIVE_COPY_LAST_ACTION_MS)
+            .remove(KEY_NATIVE_COPY_SCRIPT_COPIED)
+            .remove(KEY_POST_MEDIA_OPEN_PENDING)
+            .remove(KEY_POST_MEDIA_OPEN_STARTED_MS)
+            .remove(KEY_POST_MEDIA_OPEN_CANDIDATE)
+            .putString(KEY_LAST_STATUS, captureText
+                ? "已请求保存朋友圈图文"
+                : "已请求保存朋友圈图片");
+        if (!assumeViewer) {
+            editor.remove(KEY_NATIVE_COPY_TEXT);
+        }
+        editor.apply();
     }
 
     static void requestPointTap(Context context, String pointKey) {
@@ -98,6 +137,16 @@ final class AutomationStore {
             .edit()
             .putString(KEY_COMMAND, COMMAND_NONE)
             .putString(KEY_LAST_STATUS, status)
+            .remove(KEY_NATIVE_COPY_PHASE)
+            .remove(KEY_NATIVE_COPY_SOURCE)
+            .remove(KEY_NATIVE_COPY_SENTINEL)
+            .remove(KEY_NATIVE_COPY_ATTEMPTS)
+            .remove(KEY_NATIVE_COPY_LAST_ACTION_MS)
+            .remove(KEY_NATIVE_COPY_TEXT)
+            .remove(KEY_NATIVE_COPY_SCRIPT_COPIED)
+            .remove(KEY_POST_MEDIA_OPEN_PENDING)
+            .remove(KEY_POST_MEDIA_OPEN_STARTED_MS)
+            .remove(KEY_POST_MEDIA_OPEN_CANDIDATE)
             .apply();
     }
 
@@ -190,6 +239,131 @@ final class AutomationStore {
 
     static boolean postImageAssumeViewer(Context context) {
         return prefs(context).getBoolean(KEY_POST_IMAGE_ASSUME_VIEWER, false);
+    }
+
+    static boolean postContextCaptureText(Context context) {
+        return prefs(context).getBoolean(KEY_POST_CONTEXT_CAPTURE_TEXT, true);
+    }
+
+    static int nativeCopyPhase(Context context) {
+        return prefs(context).getInt(KEY_NATIVE_COPY_PHASE, 0);
+    }
+
+    static String nativeCopySource(Context context) {
+        return prefs(context).getString(KEY_NATIVE_COPY_SOURCE, "");
+    }
+
+    static String nativeCopySentinel(Context context) {
+        return prefs(context).getString(KEY_NATIVE_COPY_SENTINEL, "");
+    }
+
+    static int nativeCopyAttempts(Context context) {
+        return prefs(context).getInt(KEY_NATIVE_COPY_ATTEMPTS, 0);
+    }
+
+    static long nativeCopyLastActionMs(Context context) {
+        return prefs(context).getLong(KEY_NATIVE_COPY_LAST_ACTION_MS, 0L);
+    }
+
+    static String nativeCopyText(Context context) {
+        return prefs(context).getString(KEY_NATIVE_COPY_TEXT, "");
+    }
+
+    static void markNativeCopyScriptCopied(Context context) {
+        prefs(context)
+            .edit()
+            .putBoolean(KEY_NATIVE_COPY_SCRIPT_COPIED, true)
+            .apply();
+        bumpAutomationWakeTick(context);
+    }
+
+    static boolean nativeCopyScriptCopied(Context context) {
+        return prefs(context).getBoolean(KEY_NATIVE_COPY_SCRIPT_COPIED, false);
+    }
+
+    static void clearNativeCopyScriptCopied(Context context) {
+        prefs(context)
+            .edit()
+            .remove(KEY_NATIVE_COPY_SCRIPT_COPIED)
+            .apply();
+    }
+
+    static void setNativeCopyState(
+        Context context,
+        int phase,
+        String source,
+        String sentinel,
+        int attempts,
+        long lastActionMs
+    ) {
+        prefs(context)
+            .edit()
+            .putInt(KEY_NATIVE_COPY_PHASE, phase)
+            .putString(KEY_NATIVE_COPY_SOURCE, source == null ? "" : source)
+            .putString(KEY_NATIVE_COPY_SENTINEL, sentinel == null ? "" : sentinel)
+            .putInt(KEY_NATIVE_COPY_ATTEMPTS, attempts)
+            .putLong(KEY_NATIVE_COPY_LAST_ACTION_MS, lastActionMs)
+            .apply();
+    }
+
+    static void setNativeCopyText(Context context, String text) {
+        prefs(context)
+            .edit()
+            .putString(KEY_NATIVE_COPY_TEXT, text == null ? "" : text)
+            .apply();
+    }
+
+    static void clearNativeCopyState(Context context) {
+        prefs(context)
+            .edit()
+            .remove(KEY_NATIVE_COPY_PHASE)
+            .remove(KEY_NATIVE_COPY_SOURCE)
+            .remove(KEY_NATIVE_COPY_SENTINEL)
+            .remove(KEY_NATIVE_COPY_ATTEMPTS)
+            .remove(KEY_NATIVE_COPY_LAST_ACTION_MS)
+            .remove(KEY_NATIVE_COPY_SCRIPT_COPIED)
+            .apply();
+    }
+
+    static void setPostMediaOpenPending(Context context, int candidateIndex, long startedMs) {
+        prefs(context)
+            .edit()
+            .putBoolean(KEY_POST_MEDIA_OPEN_PENDING, true)
+            .putLong(KEY_POST_MEDIA_OPEN_STARTED_MS, startedMs)
+            .putInt(KEY_POST_MEDIA_OPEN_CANDIDATE, candidateIndex)
+            .apply();
+    }
+
+    static boolean postMediaOpenPending(Context context) {
+        return prefs(context).getBoolean(KEY_POST_MEDIA_OPEN_PENDING, false);
+    }
+
+    static long postMediaOpenStartedMs(Context context) {
+        return prefs(context).getLong(KEY_POST_MEDIA_OPEN_STARTED_MS, 0L);
+    }
+
+    static int postMediaOpenCandidate(Context context) {
+        return prefs(context).getInt(KEY_POST_MEDIA_OPEN_CANDIDATE, 0);
+    }
+
+    static void clearPostMediaOpenPending(Context context) {
+        prefs(context)
+            .edit()
+            .remove(KEY_POST_MEDIA_OPEN_PENDING)
+            .remove(KEY_POST_MEDIA_OPEN_STARTED_MS)
+            .remove(KEY_POST_MEDIA_OPEN_CANDIDATE)
+            .apply();
+    }
+
+    static void bumpAutomationWakeTick(Context context) {
+        prefs(context)
+            .edit()
+            .putLong(KEY_AUTOMATION_WAKE_TICK, System.currentTimeMillis())
+            .apply();
+    }
+
+    static boolean isAutomationWakeKey(String key) {
+        return KEY_AUTOMATION_WAKE_TICK.equals(key);
     }
 
     static String defaultMomentText() {

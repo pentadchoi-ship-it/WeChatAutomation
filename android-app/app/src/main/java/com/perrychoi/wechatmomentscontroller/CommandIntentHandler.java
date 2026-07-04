@@ -9,6 +9,7 @@ final class CommandIntentHandler {
     private static final String EXTRA_WORKFLOW = "workflow";
     private static final String EXTRA_IMAGE_COUNT = "image_count";
     private static final String EXTRA_ASSUME_VIEWER = "assume_viewer";
+    private static final String EXTRA_CAPTURE_TEXT = "capture_text";
     private static final String EXTRA_MAX_PAGES = "max_pages";
     private static final String EXTRA_MOMENT_TEXT = "moment_text";
 
@@ -17,6 +18,7 @@ final class CommandIntentHandler {
     private static final String WORKFLOW_COMPOSE = "compose";
     private static final String WORKFLOW_ALBUM = "album";
     private static final String WORKFLOW_STOP = "stop";
+    private static final String WORKFLOW_NATIVE_COPY_COPIED = "native_copy_copied";
 
     private CommandIntentHandler() {
     }
@@ -40,9 +42,16 @@ final class CommandIntentHandler {
                 AutomationStore.defaultPostImageCount()
             );
             boolean assumeViewer = intent.getBooleanExtra(EXTRA_ASSUME_VIEWER, false);
-            AutomationLogger.log(context, source + " 请求原生保存朋友圈图片/视频: count="
-                + count + " assumeViewer=" + assumeViewer);
-            AutomationStore.requestPostImageCapture(context, count, assumeViewer);
+            boolean captureText = intent.getBooleanExtra(EXTRA_CAPTURE_TEXT, true);
+            AutomationLogger.log(context, source + " 请求原生保存朋友圈图文/视频: count="
+                + count + " assumeViewer=" + assumeViewer + " captureText=" + captureText);
+            AutomationStore.requestPostImageCapture(context, count, assumeViewer, captureText);
+            return true;
+        }
+
+        if (WORKFLOW_NATIVE_COPY_COPIED.equals(workflow)) {
+            AutomationLogger.log(context, source + " 通知朋友圈文字已由外部点击复制");
+            AutomationStore.markNativeCopyScriptCopied(context);
             return true;
         }
 
