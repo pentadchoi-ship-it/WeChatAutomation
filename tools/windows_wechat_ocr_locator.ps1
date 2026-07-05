@@ -533,7 +533,7 @@ function New-MomentCandidatesFromOcr {
         $MinimumY = [int]([Math]::Max(110, $ImageHeight * 0.14))
     }
     if ($TimelineStartY -gt 0) {
-        $MinimumY = [Math]::Max($MinimumY, [int]($TimelineStartY + 12))
+        $MinimumY = [Math]::Max($MinimumY, [int]($TimelineStartY - 12))
     }
 
     $usable = @($Lines | Where-Object {
@@ -604,6 +604,7 @@ function New-MomentCandidatesFromOcr {
         $candidateIndex += 1
         [void]$candidates.Add([pscustomobject][ordered]@{
             candidateId = "ocr_moment_{0:D3}" -f $candidateIndex
+            rawBounds = $groupBounds
             bounds = $groupBounds
             anchorText = if ($anchorLines.Count -gt 0) { [string]$anchorLines[0].text } else { "" }
             textPoint = $textPoint
@@ -617,6 +618,41 @@ function New-MomentCandidatesFromOcr {
 
         if ($candidates.Count -ge $Limit) {
             break
+        }
+    }
+
+    $candidateArray = @($candidates | Sort-Object { $_.bounds.top })
+    for ($i = 0; $i -lt $candidateArray.Count; $i++) {
+        $candidate = $candidateArray[$i]
+        $raw = $candidate.rawBounds
+        $nextTop = if ($i -lt ($candidateArray.Count - 1)) {
+            [int]$candidateArray[$i + 1].rawBounds.top
+        }
+        else {
+            [int]($ImageHeight - 8)
+        }
+
+        $leftFloor = if ($null -ne $candidate.materialPoint) {
+            [int]([int]$candidate.materialPoint.x + 30)
+        }
+        else {
+            [int]($ImageWidth * 0.48)
+        }
+        $left = [Math]::Max([int]$raw.left, $leftFloor)
+        $right = [Math]::Max([int]$raw.right, [int]($ImageWidth - 42))
+        $top = [int]$raw.top
+        $bottom = [Math]::Min([int]($nextTop - 10), [int]($ImageHeight - 8))
+        if ($bottom -lt [int]$raw.bottom) {
+            $bottom = [int]$raw.bottom
+        }
+
+        $candidate.bounds = [pscustomobject][ordered]@{
+            left = [int]$left
+            top = [int]$top
+            right = [int]$right
+            bottom = [int]$bottom
+            width = [int]($right - $left)
+            height = [int]($bottom - $top)
         }
     }
 
@@ -748,7 +784,7 @@ $ocr = Invoke-WindowsOcr -Path $ocrInputPath -RequestedLanguageTag $LanguageTag
 $lines = @(Convert-OcrResultToLines -OcrResult $ocr.result -CoordinateScale $effectiveOcrScale)
 $effectiveMinY = if ($MinY -lt 0) { [int]([Math]::Max(110, $imageHeight * 0.14)) } else { $MinY }
 $visualAnchors = @(Find-VisualTimelineAnchors -Path $resolvedScreenshotPath -MinimumY $effectiveMinY)
-$timelineStartY = if ($visualAnchors.Count -gt 0) { [int]$visualAnchors[0].bounds.bottom } else { -1 }
+$timelineStartY = if ($visualAnchors.Count -gt 0) { [int]$visualAnchors[0].bounds.top } else { -1 }
 $candidates = @(New-MomentCandidatesFromOcr -Lines $lines -ImageWidth $imageWidth -ImageHeight $imageHeight -MinimumY $effectiveMinY -TimelineStartY $timelineStartY -Limit $TargetMoments)
 
 $rawLinesPath = Join-Path $OutputDir "ocr_lines.json"
