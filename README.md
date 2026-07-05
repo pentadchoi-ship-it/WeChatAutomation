@@ -28,11 +28,13 @@ Windows 端已加入一组微信朋友圈自动化探针，工程说明见 [wind
 1. 从朋友圈图片查看器 `Ctrl+S` 打开系统保存对话框，按右箭头批量保存同组图片，并用 `sha256` 识别重复终止。
 2. 在朋友圈列表右键正文区域，点击微信菜单的 `复制`，从剪贴板保存正文文本。
 3. 对带 `全文` 的折叠长文本，当前样本显示折叠态右键复制和展开后复制得到同一份完整正文。
+4. 对转发的视频号、公众号文章、网页链接、小程序卡片等外部引用，只保存 URL，不下载转发内容里的视频或网页媒体。
 
 主要脚本：
 
 - [tools/windows_wechat_save_viewer_batch.ps1](tools/windows_wechat_save_viewer_batch.ps1): 从当前图片查看器批量保存图片。
 - [tools/windows_wechat_copy_visible_text.ps1](tools/windows_wechat_copy_visible_text.ps1): 右键复制当前可见朋友圈正文。
+- [tools/windows_wechat_copy_link_url.ps1](tools/windows_wechat_copy_link_url.ps1): 右键复制转发链接/视频号卡片 URL。
 - [tools/windows_wechat_probe.ps1](tools/windows_wechat_probe.ps1): 枚举 UIA 树并按隐私策略保存探针结果。
 
 ## 已观察到的原设备特征

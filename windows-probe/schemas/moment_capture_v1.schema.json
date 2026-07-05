@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "moment_capture_v1.schema.json",
+  "title": "WeChat Moment Capture V1",
+  "type": "object",
+  "required": ["schemaVersion", "source", "capturedAt", "materials"],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "source": {
+      "type": "string",
+      "const": "wechat_windows_moments"
+    },
+    "capturedAt": {
+      "type": "string"
+    },
+    "postId": {
+      "type": "string"
+    },
+    "author": {
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "profileId": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "postedAtText": {
+      "type": "string"
+    },
+    "text": {
+      "type": "object",
+      "properties": {
+        "textFile": { "type": "string" },
+        "length": { "type": "integer" },
+        "sha256": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["kind", "path", "length", "sha256"],
+            "properties": {
+              "kind": { "enum": ["image", "video", "file"] },
+              "path": { "type": "string" },
+              "length": { "type": "integer" },
+              "sha256": { "type": "string" },
+              "captureMethod": { "type": "string" }
+            },
+            "additionalProperties": true
+          },
+          {
+            "type": "object",
+            "required": ["kind", "urlFile", "urlLength", "urlSha256"],
+            "properties": {
+              "kind": { "const": "external_url" },
+              "providerHint": {
+                "enum": ["unknown", "video_account", "article", "link", "mini_program"]
+              },
+              "title": { "type": "string" },
+              "urlFile": { "type": "string" },
+              "urlLength": { "type": "integer" },
+              "urlSha256": { "type": "string" },
+              "captureMethod": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": true
+}

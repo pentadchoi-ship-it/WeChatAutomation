@@ -243,6 +243,59 @@ powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat
 - `events.jsonl`: 每次保存、右箭头导航、重复检测的事件流水。
 - `manifest.json`: 本轮汇总，包括停止原因、保存数量、唯一 sha256 数量和媒体清单。
 
+## Material Save Policy
+
+朋友圈素材按来源分三类保存：
+
+- `image` / `video`: 用户直接发布、客户端能打开查看器且能通过系统保存对话框保存的本地媒体，保存为本地文件，并记录 `length` / `sha256`。
+- `external_url`: 转发的视频号、公众号文章、网页链接、小程序卡片等外部引用，不下载媒体，只复制并保存 URL。
+- `text`: 正文通过右键 `复制` 保存为本地文本文件；折叠长文本优先直接复制折叠态。
+
+当前结构化记录参考：
+
+```text
+windows-probe/schemas/moment_capture_v1.schema.json
+```
+
+建议的单条朋友圈目录结构：
+
+```text
+moment_xxx/
+  moment.json
+  text/copied_text.txt
+  media/image_001.jpg
+  media/video_001.mp4
+  links/link_001.txt
+```
+
+其中 `moment.json` 的 `materials[]` 可以同时包含本地媒体和 `external_url`。如果素材是转发视频号或转发链接，应只生成 `external_url` 条目，不尝试下载视频内容。
+
+## URL Copy Probe
+
+转发视频号、公众号文章、网页链接、小程序卡片等，应保存为 URL 引用：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_copy_link_url.ps1 -X 220 -Y 480 -ProviderHint video_account
+```
+
+当前链路：
+
+```text
+朋友圈列表 -> 右键链接/视频号卡片区域 -> 点击菜单中的复制链接/复制 -> 读取剪贴板 -> 抽取 URL -> 保存 url.txt 和 link_reference.json -> 恢复原剪贴板
+```
+
+如果用户已手动复制链接到剪贴板，也可以只解析当前剪贴板：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_copy_link_url.ps1 -ClipboardOnly -ProviderHint link
+```
+
+输出结构：
+
+- `url.txt`: 抽取到的主 URL。
+- `link_reference.json`: `external_url` 素材引用，默认只记录 URL 长度和 sha256，不把 URL 写进摘要。
+- `summary.json`: 本次复制/解析状态、点击坐标、URL 数量和 hash。
+
 ## Text Copy Probe
 
 朋友圈正文不需要 OCR 也有一条可行链路：右键正文区域，微信会弹出包含 `复制` 的菜单，点击第一项后可以从剪贴板读取正文。
