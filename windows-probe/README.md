@@ -332,9 +332,11 @@ powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat
 当前识别策略：
 
 - 通过 Windows OCR 读取当前窗口截图中的文字框，用日期/时间锚点和垂直间距分组出候选朋友圈，不读取数据库。
+- OCR 默认使用 2x 放大图提升小字识别率，但输出坐标会折回原始微信窗口坐标。
 - 边识别边采集：先处理当前可见页，再自动向下滚动，直到处理到目标条数或达到页数上限。
 - OCR 只用于定位点位，不作为正文最终数据源；正文仍通过朋友圈正文区域右键 `复制` 保存。
 - OCR 给出素材/卡片点位后，脚本先尝试复制 URL，如果能拿到 URL 就保存为 `external_url` 并跳过媒体下载；拿不到 URL 时再尝试按本地图片/视频保存。
+- 每次 OCR 定位会输出 `locator_overlay.png`，蓝框表示时间线锚点，绿框表示候选朋友圈，蓝点是正文复制点，红点是素材/卡片点击点。
 - 对每条朋友圈尽力处理；正文、URL、媒体某一部分失败不会中断整批任务，最终单条状态写为 `captured`、`partial` 或 `failed`。
 
 ### Debug Plan Capture

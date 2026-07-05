@@ -4,6 +4,7 @@ param(
     [string]$OutputDir = "",
     [string]$LanguageTag = "zh-Hans-CN",
     [int]$TargetMoments = 20,
+    [int]$OcrScale = 2,
     [int]$MinY = -1,
     [switch]$CaptureCurrentWindow,
     [switch]$ValidateOnly
@@ -244,8 +245,50 @@ function Invoke-WindowsOcr {
     }
 }
 
+function New-ScaledOcrImage {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$OutputPath,
+        [int]$Scale = 1
+    )
+
+    if ($Scale -le 1) {
+        return $SourcePath
+    }
+
+    $source = [System.Drawing.Image]::FromFile($SourcePath)
+    try {
+        $width = [int]$source.Width * $Scale
+        $height = [int]$source.Height * $Scale
+        $bitmap = New-Object System.Drawing.Bitmap($width, $height)
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        try {
+            $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $graphics.DrawImage($source, 0, 0, $width, $height)
+
+            $parent = Split-Path -Parent $OutputPath
+            if (-not [string]::IsNullOrWhiteSpace($parent)) {
+                New-Item -ItemType Directory -Path $parent -Force | Out-Null
+            }
+            $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+        }
+        finally {
+            $graphics.Dispose()
+            $bitmap.Dispose()
+        }
+    }
+    finally {
+        $source.Dispose()
+    }
+
+    return (Resolve-Path -LiteralPath $OutputPath).Path
+}
+
 function Get-LineBounds {
-    param([Parameter(Mandatory = $true)]$Words)
+    param(
+        [Parameter(Mandatory = $true)]$Words,
+        [double]$CoordinateScale = 1.0
+    )
 
     $rects = @($Words | ForEach-Object { $_.BoundingRect })
     if ($rects.Count -eq 0) {
@@ -256,6 +299,13 @@ function Get-LineBounds {
     $top = ($rects | Measure-Object Top -Minimum).Minimum
     $right = ($rects | ForEach-Object { $_.Left + $_.Width } | Measure-Object -Maximum).Maximum
     $bottom = ($rects | ForEach-Object { $_.Top + $_.Height } | Measure-Object -Maximum).Maximum
+    if ($CoordinateScale -le 0) {
+        $CoordinateScale = 1.0
+    }
+    $left = $left / $CoordinateScale
+    $top = $top / $CoordinateScale
+    $right = $right / $CoordinateScale
+    $bottom = $bottom / $CoordinateScale
 
     return [pscustomobject][ordered]@{
         left = [int][Math]::Floor($left)
@@ -270,7 +320,10 @@ function Get-LineBounds {
 }
 
 function Convert-OcrResultToLines {
-    param([Parameter(Mandatory = $true)]$OcrResult)
+    param(
+        [Parameter(Mandatory = $true)]$OcrResult,
+        [double]$CoordinateScale = 1.0
+    )
 
     $lines = New-Object System.Collections.ArrayList
     $index = 0
@@ -285,7 +338,7 @@ function Convert-OcrResultToLines {
             continue
         }
 
-        $bounds = Get-LineBounds -Words $words
+        $bounds = Get-LineBounds -Words $words -CoordinateScale $CoordinateScale
         if ($null -eq $bounds) {
             continue
         }
@@ -298,7 +351,7 @@ function Convert-OcrResultToLines {
             textSha256 = Get-TextHash -Text $text.Trim()
             bounds = $bounds
             words = @($words | ForEach-Object {
-                $wordBounds = Get-LineBounds -Words @($_)
+                $wordBounds = Get-LineBounds -Words @($_) -CoordinateScale $CoordinateScale
                 [pscustomobject][ordered]@{
                     text = $_.Text
                     bounds = $wordBounds
@@ -344,6 +397,105 @@ function New-PointObject {
     return [pscustomobject][ordered]@{ x = $X; y = $Y }
 }
 
+function Test-DarkPixel {
+    param([Parameter(Mandatory = $true)][System.Drawing.Color]$Color)
+
+    $brightness = ($Color.R + $Color.G + $Color.B) / 765.0
+    return ($brightness -lt 0.55)
+}
+
+function Find-VisualTimelineAnchors {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [int]$MinimumY
+    )
+
+    $bitmap = [System.Drawing.Bitmap]::FromFile($Path)
+    try {
+        $xStart = [int]([Math]::Max(12, $bitmap.Width * 0.04))
+        $xEnd = [int]([Math]::Min($bitmap.Width * 0.21, 118))
+        $yStart = [int]([Math]::Max($MinimumY, $bitmap.Height * 0.55))
+        $yEnd = [int]([Math]::Min($bitmap.Height - 55, $bitmap.Height * 0.92))
+        $runs = New-Object System.Collections.ArrayList
+        $active = $null
+        $gapRows = 0
+
+        for ($y = $yStart; $y -le $yEnd; $y += 2) {
+            $darkCount = 0
+            $firstDark = $null
+            $lastDark = $null
+            for ($x = $xStart; $x -le $xEnd; $x += 2) {
+                if (Test-DarkPixel -Color $bitmap.GetPixel($x, $y)) {
+                    $darkCount += 1
+                    if ($null -eq $firstDark) {
+                        $firstDark = $x
+                    }
+                    $lastDark = $x
+                }
+            }
+
+            if ($darkCount -ge 5 -and $null -ne $firstDark -and $null -ne $lastDark) {
+                if ($null -eq $active) {
+                    $active = [pscustomobject][ordered]@{
+                        top = $y
+                        bottom = $y
+                        left = $firstDark
+                        right = $lastDark
+                    }
+                }
+                else {
+                    $active.bottom = $y
+                    $active.left = [Math]::Min([int]$active.left, [int]$firstDark)
+                    $active.right = [Math]::Max([int]$active.right, [int]$lastDark)
+                }
+                $gapRows = 0
+            }
+            elseif ($null -ne $active) {
+                $gapRows += 2
+                if ($gapRows -gt 8) {
+                    [void]$runs.Add($active)
+                    $active = $null
+                    $gapRows = 0
+                }
+            }
+        }
+        if ($null -ne $active) {
+            [void]$runs.Add($active)
+        }
+
+        $anchors = New-Object System.Collections.ArrayList
+        $index = 0
+        foreach ($run in $runs) {
+            $width = [int]$run.right - [int]$run.left
+            $height = [int]$run.bottom - [int]$run.top
+            if ($width -lt 24 -or $width -gt 105 -or $height -lt 18 -or $height -gt 58) {
+                continue
+            }
+
+            $index += 1
+            [void]$anchors.Add([pscustomobject][ordered]@{
+                anchorId = "visual_anchor_{0:D3}" -f $index
+                source = "left_date_column_dark_text"
+                bounds = [pscustomobject][ordered]@{
+                    left = [int]$run.left
+                    top = [int]$run.top
+                    right = [int]$run.right
+                    bottom = [int]$run.bottom
+                    width = $width
+                    height = $height
+                    centerX = [int](([int]$run.left + [int]$run.right) / 2)
+                    centerY = [int](([int]$run.top + [int]$run.bottom) / 2)
+                }
+            })
+        }
+
+        return @($anchors | Sort-Object { $_.bounds.top })
+    }
+    finally {
+        $bitmap.Dispose()
+    }
+}
+
 function Get-GroupBounds {
     param([Parameter(Mandatory = $true)]$Lines)
 
@@ -373,11 +525,15 @@ function New-MomentCandidatesFromOcr {
         [Parameter(Mandatory = $true)][int]$ImageWidth,
         [Parameter(Mandatory = $true)][int]$ImageHeight,
         [int]$MinimumY,
+        [int]$TimelineStartY = -1,
         [int]$Limit = 20
     )
 
     if ($MinimumY -lt 0) {
         $MinimumY = [int]([Math]::Max(110, $ImageHeight * 0.14))
+    }
+    if ($TimelineStartY -gt 0) {
+        $MinimumY = [Math]::Max($MinimumY, [int]($TimelineStartY + 12))
     }
 
     $usable = @($Lines | Where-Object {
@@ -467,11 +623,80 @@ function New-MomentCandidatesFromOcr {
     return @($candidates)
 }
 
+function Save-LocatorOverlay {
+    param(
+        [Parameter(Mandatory = $true)][string]$Screenshot,
+        [Parameter(Mandatory = $true)][string]$OutputPath,
+        [Parameter(Mandatory = $true)]$Candidates,
+        [Parameter(Mandatory = $true)]$VisualAnchors
+    )
+
+    $bitmap = [System.Drawing.Bitmap]::FromFile($Screenshot)
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    try {
+        $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $candidatePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(20, 180, 80), 3)
+        $anchorPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(40, 120, 240), 3)
+        $textBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(40, 120, 240))
+        $materialBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(230, 70, 45))
+        $labelBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(20, 20, 20))
+        $labelBackBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(230, 255, 255, 255))
+        $font = New-Object System.Drawing.Font("Segoe UI", 9)
+
+        foreach ($anchor in @($VisualAnchors)) {
+            $b = $anchor.bounds
+            $rect = New-Object System.Drawing.Rectangle([int]$b.left, [int]$b.top, [int]$b.width, [int]$b.height)
+            $graphics.DrawRectangle($anchorPen, $rect)
+        }
+
+        foreach ($candidate in @($Candidates)) {
+            $b = $candidate.bounds
+            $rect = New-Object System.Drawing.Rectangle([int]$b.left, [int]$b.top, [int]$b.width, [int]$b.height)
+            $graphics.DrawRectangle($candidatePen, $rect)
+
+            $label = [string]$candidate.candidateId
+            $labelSize = $graphics.MeasureString($label, $font)
+            $labelRect = New-Object System.Drawing.RectangleF([float]$b.left, [float]([Math]::Max(0, [int]$b.top - 18)), $labelSize.Width, $labelSize.Height)
+            $graphics.FillRectangle($labelBackBrush, $labelRect)
+            $graphics.DrawString($label, $font, $labelBrush, $labelRect.Location)
+
+            if ($null -ne $candidate.textPoint) {
+                $x = [int]$candidate.textPoint.x
+                $y = [int]$candidate.textPoint.y
+                $graphics.FillEllipse($textBrush, $x - 5, $y - 5, 10, 10)
+            }
+            if ($null -ne $candidate.materialPoint) {
+                $x = [int]$candidate.materialPoint.x
+                $y = [int]$candidate.materialPoint.y
+                $graphics.FillEllipse($materialBrush, $x - 5, $y - 5, 10, 10)
+            }
+        }
+
+        $parent = Split-Path -Parent $OutputPath
+        if (-not [string]::IsNullOrWhiteSpace($parent)) {
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }
+        $bitmap.Save($OutputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    }
+    finally {
+        if ($null -ne $font) { $font.Dispose() }
+        if ($null -ne $labelBackBrush) { $labelBackBrush.Dispose() }
+        if ($null -ne $labelBrush) { $labelBrush.Dispose() }
+        if ($null -ne $materialBrush) { $materialBrush.Dispose() }
+        if ($null -ne $textBrush) { $textBrush.Dispose() }
+        if ($null -ne $anchorPen) { $anchorPen.Dispose() }
+        if ($null -ne $candidatePen) { $candidatePen.Dispose() }
+        $graphics.Dispose()
+        $bitmap.Dispose()
+    }
+}
+
 Add-OcrLocatorAssemblies
 
 if ($ValidateOnly) {
     [pscustomobject][ordered]@{
         ok = $true
+        defaultOcrScale = $OcrScale
         availableLanguages = @([Windows.Media.Ocr.OcrEngine]::AvailableRecognizerLanguages | ForEach-Object {
             [pscustomobject][ordered]@{
                 languageTag = $_.LanguageTag
@@ -502,6 +727,14 @@ elseif (-not (Test-Path -LiteralPath $ScreenshotPath)) {
 }
 
 $resolvedScreenshotPath = (Resolve-Path -LiteralPath $ScreenshotPath).Path
+$effectiveOcrScale = [Math]::Max(1, $OcrScale)
+$ocrInputPath = if ($effectiveOcrScale -gt 1) {
+    New-ScaledOcrImage -SourcePath $resolvedScreenshotPath -OutputPath (Join-Path $OutputDir ("ocr_input_{0}x.png" -f $effectiveOcrScale)) -Scale $effectiveOcrScale
+}
+else {
+    $resolvedScreenshotPath
+}
+
 $bitmapInfo = [System.Drawing.Image]::FromFile($resolvedScreenshotPath)
 try {
     $imageWidth = [int]$bitmapInfo.Width
@@ -511,22 +744,29 @@ finally {
     $bitmapInfo.Dispose()
 }
 
-$ocr = Invoke-WindowsOcr -Path $resolvedScreenshotPath -RequestedLanguageTag $LanguageTag
-$lines = @(Convert-OcrResultToLines -OcrResult $ocr.result)
-$candidates = @(New-MomentCandidatesFromOcr -Lines $lines -ImageWidth $imageWidth -ImageHeight $imageHeight -MinimumY $MinY -Limit $TargetMoments)
+$ocr = Invoke-WindowsOcr -Path $ocrInputPath -RequestedLanguageTag $LanguageTag
+$lines = @(Convert-OcrResultToLines -OcrResult $ocr.result -CoordinateScale $effectiveOcrScale)
+$effectiveMinY = if ($MinY -lt 0) { [int]([Math]::Max(110, $imageHeight * 0.14)) } else { $MinY }
+$visualAnchors = @(Find-VisualTimelineAnchors -Path $resolvedScreenshotPath -MinimumY $effectiveMinY)
+$timelineStartY = if ($visualAnchors.Count -gt 0) { [int]$visualAnchors[0].bounds.bottom } else { -1 }
+$candidates = @(New-MomentCandidatesFromOcr -Lines $lines -ImageWidth $imageWidth -ImageHeight $imageHeight -MinimumY $effectiveMinY -TimelineStartY $timelineStartY -Limit $TargetMoments)
 
 $rawLinesPath = Join-Path $OutputDir "ocr_lines.json"
 $resultPath = Join-Path $OutputDir "locator_result.json"
+$overlayPath = Join-Path $OutputDir "locator_overlay.png"
 
 Save-Json -Value ([pscustomobject][ordered]@{
     createdAt = (Get-Date).ToString("o")
     screenshot = $resolvedScreenshotPath
+    ocrInputImage = $ocrInputPath
+    ocrScale = $effectiveOcrScale
     languageTag = $ocr.language
     image = [pscustomobject][ordered]@{
         width = $imageWidth
         height = $imageHeight
     }
     windowBounds = $windowBounds
+    visualTimelineAnchors = @($visualAnchors)
     lineCount = $lines.Count
     lines = @($lines)
 }) -Path $rawLinesPath -Depth 14
@@ -535,17 +775,23 @@ $result = [pscustomobject][ordered]@{
     createdAt = (Get-Date).ToString("o")
     method = "windows_media_ocr_moments_locator_v1"
     screenshot = $resolvedScreenshotPath
+    ocrInputImage = $ocrInputPath
+    ocrScale = $effectiveOcrScale
     languageTag = $ocr.language
     image = [pscustomobject][ordered]@{
         width = $imageWidth
         height = $imageHeight
     }
-    minY = if ($MinY -lt 0) { [int]([Math]::Max(110, $imageHeight * 0.14)) } else { $MinY }
+    minY = $effectiveMinY
+    timelineStartY = $timelineStartY
+    visualTimelineAnchors = @($visualAnchors)
     lineCount = $lines.Count
     candidateCount = $candidates.Count
     ocrLinesFile = $rawLinesPath
+    overlayFile = $overlayPath
     candidates = @($candidates)
 }
 
+Save-LocatorOverlay -Screenshot $resolvedScreenshotPath -OutputPath $overlayPath -Candidates $candidates -VisualAnchors $visualAnchors
 Save-Json -Value $result -Path $resultPath -Depth 14
 $result | ConvertTo-Json -Depth 14
