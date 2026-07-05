@@ -5,6 +5,7 @@ param(
     [string]$OutputDir = "",
     [int]$MaxPages = 8,
     [string]$OcrLanguageTag = "zh-Hans-CN",
+    [switch]$RunNow,
     [switch]$DryRun,
     [switch]$ValidateOnly
 )
@@ -341,6 +342,10 @@ function Invoke-WeixinScroll {
         [int]$WheelDelta = -360,
         [int]$WaitMilliseconds = 1200
     )
+
+    if ($DryRun) {
+        return
+    }
 
     $windowX = [int]($Bounds.width / 2)
     $windowY = [int]($Bounds.height * 0.72)
@@ -787,7 +792,9 @@ function Get-VisibleMomentCandidates {
         $textProbe = $null
         $textAttempted = $false
         $textAttemptStatus = "not_attempted"
+        $textDuplicate = $false
         $material = $null
+        $materialDuplicate = $false
         $textPoint = Get-ObjectProperty -InputObject $ocrCandidate -Name "textPoint"
         $materialPoint = Get-ObjectProperty -InputObject $ocrCandidate -Name "materialPoint"
 
@@ -795,7 +802,7 @@ function Get-VisibleMomentCandidates {
             $material = New-OcrMaterialCandidate -Point $materialPoint -ScreenshotPath $ScreenshotPath
             if ($null -ne $material -and -not [string]::IsNullOrWhiteSpace($material.fingerprint)) {
                 if ($SeenMaterialHashes.ContainsKey($material.fingerprint)) {
-                    $material = $null
+                    $materialDuplicate = $true
                 }
                 else {
                     $SeenMaterialHashes[$material.fingerprint] = $true
@@ -826,7 +833,9 @@ function Get-VisibleMomentCandidates {
                         $textAttemptStatus = "not_moment_text"
                     }
                     elseif ($SeenTextHashes.ContainsKey($probe.sha256)) {
-                        $textAttemptStatus = "duplicate"
+                        $textDuplicate = $true
+                        $textProbe = $probe
+                        $textAttemptStatus = "copied_duplicate"
                     }
                     else {
                         $SeenTextHashes[$probe.sha256] = $true
@@ -860,7 +869,9 @@ function Get-VisibleMomentCandidates {
             textProbe = $textProbe
             textAttempted = $textAttempted
             textAttemptStatus = $textAttemptStatus
+            textDuplicate = $textDuplicate
             material = $material
+            materialDuplicate = $materialDuplicate
             detection = "ocr_locator"
             ocrCandidateId = Get-StringProperty -InputObject $ocrCandidate -Name "candidateId"
             locatorConfidence = Get-StringProperty -InputObject $ocrCandidate -Name "locatorConfidence"
@@ -1178,8 +1189,10 @@ function Save-DetectedMoment {
     $actionCount = 0
     $hardFailureCount = 0
     $hadMaterialCandidate = ($null -ne $Candidate.material)
+    $isTextDuplicate = [bool](Get-ObjectProperty -InputObject $Candidate -Name "textDuplicate" -Default $false)
+    $isMaterialDuplicate = [bool](Get-ObjectProperty -InputObject $Candidate -Name "materialDuplicate" -Default $false)
 
-    Add-CaptureEvent -Events $Events -Type "moment_detected" -PostId $postId -Status $Candidate.detection -Detail ("y={0}" -f $Candidate.y)
+    Add-CaptureEvent -Events $Events -Type "moment_detected" -PostId $postId -Status $Candidate.detection -Detail ("y={0}; textDuplicate={1}; materialDuplicate={2}" -f $Candidate.y, $isTextDuplicate, $isMaterialDuplicate)
 
     if ($null -ne $Candidate.textProbe) {
         $actionCount += 1
@@ -1187,7 +1200,14 @@ function Save-DetectedMoment {
             if (-not $DryRun) {
                 Set-MomentTextFromProbe -Moment $moment -Probe $Candidate.textProbe -MomentDir $momentDir -RootDir $OutputRoot
             }
-            Add-CaptureEvent -Events $Events -Type "text" -PostId $postId -Status $(if ($DryRun) { "dry_run" } else { "copied" })
+            $copiedStatus = if ($DryRun) {
+                "dry_run"
+            }
+            else {
+                $candidateTextStatus = Get-StringProperty -InputObject $Candidate -Name "textAttemptStatus" -Default "copied"
+                if ($candidateTextStatus -in @("copied", "copied_duplicate")) { $candidateTextStatus } else { "copied" }
+            }
+            Add-CaptureEvent -Events $Events -Type "text" -PostId $postId -Status $copiedStatus
         }
         catch {
             $hardFailureCount += 1
@@ -1197,7 +1217,7 @@ function Save-DetectedMoment {
     elseif ([bool](Get-ObjectProperty -InputObject $Candidate -Name "textAttempted" -Default $false)) {
         $actionCount += 1
         $textAttemptStatus = Get-StringProperty -InputObject $Candidate -Name "textAttemptStatus" -Default "copy_failed"
-        if ($textAttemptStatus -notin @("duplicate", "not_moment_text")) {
+        if ($textAttemptStatus -notin @("duplicate", "copied_duplicate", "not_moment_text")) {
             $hardFailureCount += 1
         }
         Add-CaptureEvent -Events $Events -Type "text" -PostId $postId -Status $textAttemptStatus
@@ -1333,6 +1353,8 @@ function Invoke-OneClickCapture {
                     detection = $_.detection
                     hasText = ($null -ne $_.textProbe)
                     hasMaterial = ($null -ne $_.material)
+                    textDuplicate = [bool](Get-ObjectProperty -InputObject $_ -Name "textDuplicate" -Default $false)
+                    materialDuplicate = [bool](Get-ObjectProperty -InputObject $_ -Name "materialDuplicate" -Default $false)
                 }
             })
         }) -Path (Join-Path $pageDir "detected_candidates.json") -Depth 12
@@ -1437,6 +1459,12 @@ if ($ValidateOnly) {
         ocrLanguages = $ocrLanguages
         ocrError = $ocrError
     } | ConvertTo-Json -Depth 8
+    return
+}
+
+if ($RunNow) {
+    $summary = Invoke-OneClickCapture -FriendName $DisplayName -Count $TargetMoments -RequestedOutputDir $OutputDir
+    $summary | ConvertTo-Json -Depth 14
     return
 }
 

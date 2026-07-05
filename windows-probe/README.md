@@ -310,6 +310,18 @@ powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat
 powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_friend_recent_oneclick.ps1 -DisplayName "AAA方雯直播号" -TargetMoments 5
 ```
 
+不弹 GUI、直接从当前好友朋友圈页开始执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_friend_recent_oneclick.ps1 -DisplayName "AAA方雯直播号" -TargetMoments 5 -RunNow
+```
+
+只验证当前页 OCR 候选和保存计划，不复制、不点击素材、不滚动：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_friend_recent_oneclick.ps1 -DisplayName "AAA方雯直播号" -TargetMoments 5 -MaxPages 1 -DryRun -RunNow
+```
+
 界面只保留必要输入：
 
 - `Friend name`: 好友名，仅用于输出目录和 `profile.json`。
@@ -337,6 +349,7 @@ powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat
 - OCR 只用于定位点位，不作为正文最终数据源；正文仍通过朋友圈正文区域右键 `复制` 保存。
 - OCR 给出素材/卡片点位后，脚本先尝试复制 URL，如果能拿到 URL 就保存为 `external_url` 并跳过媒体下载；拿不到 URL 时再尝试按本地图片/视频保存。
 - 每次 OCR 定位会输出 `locator_overlay.png`，蓝框表示时间线锚点，绿框表示扩展后的候选朋友圈文字区域，蓝点是正文复制点，红点是素材/卡片点击点；JSON 中的 `rawBounds` 保留 OCR 原始文字行区域。
+- 重复文案或重复素材指纹不会直接丢弃候选，只会在事件和 `detected_candidates.json` 里标记 `textDuplicate/materialDuplicate`，避免电商号重复商品文案导致漏抓最近 N 条。
 - 对每条朋友圈尽力处理；正文、URL、媒体某一部分失败不会中断整批任务，最终单条状态写为 `captured`、`partial` 或 `failed`。
 
 ### Debug Plan Capture
