@@ -1,0 +1,45 @@
+{
+  "app": "Weixin",
+  "version": "4.1.10.53",
+  "createdAt": "2026-07-04T22:58:00+08:00",
+  "coordinateSystem": "window-relative UI Automation bounding rectangle",
+  "privacy": {
+    "screenshotsStoredInGit": false,
+    "rawUiaTextStoredByDefault": false
+  },
+  "samples": {
+    "mainWindow": {
+      "width": 1118,
+      "height": 809,
+      "source": "windows-probe/nav-runs/20260704_225351/summary.json"
+    },
+    "momentsWindow": {
+      "width": 568,
+      "height": 697,
+      "source": "windows-probe/runs/20260704_225713/summary.json"
+    }
+  },
+  "points": {
+    "main_moments_nav": {
+      "x": 47,
+      "y": 322,
+      "description": "Left navigation aperture icon. Opens the Moments window."
+    },
+    "moments_camera": {
+      "x": 92,
+      "y": 31,
+      "description": "Camera icon in the top-left toolbar of the Moments window. Opens the Windows file picker."
+    },
+    "moments_close": {
+      "x": 520,
+      "y": 31,
+      "description": "Close button in the top-right area of the Moments window."
+    }
+  },
+  "observations": [
+    "WeChat 4.1.10.53 exposes only the top-level window through UI Automation; no actionable child controls were exposed in the tested states.",
+    "The main Weixin window and the Moments window use different bounding rectangles after Moments opens.",
+    "Win32 GetWindowRect did not match screenshot coordinates under the current display scaling. Use UI Automation BoundingRectangle for coordinate clicks.",
+    "Clicking moments_camera opened the Windows file picker. The final publish action has not been automated."
+  ]
+}

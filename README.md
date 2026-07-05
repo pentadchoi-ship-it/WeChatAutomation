@@ -19,6 +19,22 @@
 
 Android 工程说明见 [android-app/README.md](/Users/perrychoi/Documents/Raspberry/android-app/README.md)。
 
+## Windows 朋友圈探针
+
+Windows 端已加入一组微信朋友圈自动化探针，工程说明见 [windows-probe/README.md](windows-probe/README.md)。当前重点是本地保存和结构化采集，不自动发布、不发送消息。
+
+已验证的 Windows 链路：
+
+1. 从朋友圈图片查看器 `Ctrl+S` 打开系统保存对话框，按右箭头批量保存同组图片，并用 `sha256` 识别重复终止。
+2. 在朋友圈列表右键正文区域，点击微信菜单的 `复制`，从剪贴板保存正文文本。
+3. 对带 `全文` 的折叠长文本，当前样本显示折叠态右键复制和展开后复制得到同一份完整正文。
+
+主要脚本：
+
+- [tools/windows_wechat_save_viewer_batch.ps1](tools/windows_wechat_save_viewer_batch.ps1): 从当前图片查看器批量保存图片。
+- [tools/windows_wechat_copy_visible_text.ps1](tools/windows_wechat_copy_visible_text.ps1): 右键复制当前可见朋友圈正文。
+- [tools/windows_wechat_probe.ps1](tools/windows_wechat_probe.ps1): 枚举 UIA 树并按隐私策略保存探针结果。
+
 ## 已观察到的原设备特征
 
 - USB Vendor ID: `0x4348`
