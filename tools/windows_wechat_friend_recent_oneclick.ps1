@@ -6,6 +6,9 @@ param(
     [int]$MaxPages = 8,
     [string]$OcrLanguageTag = "zh-Hans-CN",
     [switch]$RunNow,
+    [switch]$PreviewOnly,
+    [switch]$AllowMaterialClicks,
+    [switch]$AllowWideWindow,
     [switch]$DryRun,
     [switch]$ValidateOnly
 )
@@ -13,6 +16,8 @@ param(
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = "Stop"
 $script:LogListBox = $null
+$script:AllowMaterialClicksForCapture = [bool]$AllowMaterialClicks
+$script:AllowWideWindowForCapture = [bool]$AllowWideWindow
 
 function Add-OneClickAssemblies {
     Add-Type -AssemblyName UIAutomationClient
@@ -1223,7 +1228,11 @@ function Save-DetectedMoment {
         Add-CaptureEvent -Events $Events -Type "text" -PostId $postId -Status $textAttemptStatus
     }
 
-    if ($hadMaterialCandidate) {
+    if ($hadMaterialCandidate -and -not $script:AllowMaterialClicksForCapture) {
+        Add-CaptureEvent -Events $Events -Type "link" -PostId $postId -Status "skipped" -Detail "material_clicks_disabled"
+        Add-CaptureEvent -Events $Events -Type "media" -PostId $postId -Status "skipped" -Detail "material_clicks_disabled"
+    }
+    elseif ($hadMaterialCandidate) {
         $point = $Candidate.material.point
         $linkDir = Join-Path $linksRoot "link_001"
         $linkResult = $null
@@ -1335,6 +1344,9 @@ function Invoke-OneClickCapture {
         $pageIndex += 1
         $focus = Focus-WeixinWindow
         $bounds = $focus.bounds
+        if (-not $script:AllowWideWindowForCapture -and $bounds.width -gt 760) {
+            throw ("Current WeChat window is {0}px wide, which looks like the main chat window instead of the narrow Moments window. Open the target friend's Moments page first, then rerun. Use -AllowWideWindow only for debugging a resized Moments window." -f $bounds.width)
+        }
         $pageId = "page_{0:D3}" -f $pageIndex
         $pageDir = Join-Path $workDir $pageId
         New-Item -ItemType Directory -Path $pageDir -Force | Out-Null
@@ -1372,7 +1384,12 @@ function Invoke-OneClickCapture {
                 break
             }
             $savedCount += 1
-            Add-Log ("Saving post {0}/{1}..." -f $savedCount, $Count)
+            if ($DryRun) {
+                Add-Log ("Planning post {0}/{1}..." -f $savedCount, $Count)
+            }
+            else {
+                Add-Log ("Saving post {0}/{1}..." -f $savedCount, $Count)
+            }
             [void](Save-DetectedMoment -Candidate $candidate -Index $savedCount -SessionId $sessionId -OutputRoot $captureRoot -Profile $profile -Bounds $bounds -Events $events -IndexPath $indexPath)
             if (-not $DryRun) {
                 Update-ProfileCounts -Profile $profile
@@ -1393,6 +1410,9 @@ function Invoke-OneClickCapture {
     $summary = [pscustomobject][ordered]@{
         createdAt = (Get-Date).ToString("o")
         dryRun = [bool]$DryRun
+        previewOnly = [bool]$PreviewOnly
+        allowMaterialClicks = [bool]$script:AllowMaterialClicksForCapture
+        allowWideWindow = [bool]$script:AllowWideWindowForCapture
         outputDir = $captureRoot
         oneClickWorkDir = $workDir
         captureSessionId = $sessionId
@@ -1423,6 +1443,10 @@ if ($TargetMoments -lt 1) {
 }
 if ($MaxPages -lt 1) {
     throw "MaxPages must be >= 1."
+}
+if ($PreviewOnly) {
+    $DryRun = $true
+    $MaxPages = 1
 }
 
 if ($ValidateOnly) {
@@ -1455,6 +1479,7 @@ if ($ValidateOnly) {
         canLoadWinForms = $true
         weixinRunning = $weixinRunning
         windowBounds = $bounds
+        looksLikeMomentsWindow = ($weixinRunning -and $null -ne $bounds -and [int]$bounds.width -le 760)
         ocrAvailable = $ocrAvailable
         ocrLanguages = $ocrLanguages
         ocrError = $ocrError
@@ -1471,8 +1496,8 @@ if ($RunNow) {
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "WeChat Moments Saver"
 $form.Width = 520
-$form.Height = 390
-$form.MinimumSize = New-Object System.Drawing.Size(500, 360)
+$form.Height = 430
+$form.MinimumSize = New-Object System.Drawing.Size(500, 400)
 $form.StartPosition = "CenterScreen"
 $form.ShowInTaskbar = $true
 $form.TopMost = $true
@@ -1487,7 +1512,7 @@ $titleLabel.Left = 16
 $titleLabel.Top = 16
 $titleLabel.Width = 460
 $titleLabel.Height = 52
-$titleLabel.Text = "Open the target friend's Moments page in WeChat, then click Start. The app will keep going and record partial or failed posts."
+$titleLabel.Text = "Open the target friend's Moments page, then click Start. Media/card clicking is off by default; failed parts are recorded as partial/failed."
 $mainPanel.Controls.Add($titleLabel)
 
 $friendLabel = New-Object System.Windows.Forms.Label
@@ -1522,9 +1547,18 @@ $countInput.Maximum = 50
 $countInput.Value = $TargetMoments
 $mainPanel.Controls.Add($countInput)
 
+$materialCheckBox = New-Object System.Windows.Forms.CheckBox
+$materialCheckBox.Left = 150
+$materialCheckBox.Top = 150
+$materialCheckBox.Width = 300
+$materialCheckBox.Height = 24
+$materialCheckBox.Text = "Save media/link cards (experimental)"
+$materialCheckBox.Checked = $script:AllowMaterialClicksForCapture
+$mainPanel.Controls.Add($materialCheckBox)
+
 $startButton = New-Object System.Windows.Forms.Button
 $startButton.Left = 16
-$startButton.Top = 164
+$startButton.Top = 188
 $startButton.Width = 434
 $startButton.Height = 46
 $startButton.Text = "Start saving"
@@ -1532,7 +1566,7 @@ $mainPanel.Controls.Add($startButton)
 
 $logListBox = New-Object System.Windows.Forms.ListBox
 $logListBox.Left = 16
-$logListBox.Top = 226
+$logListBox.Top = 252
 $logListBox.Width = 434
 $logListBox.Height = 96
 $mainPanel.Controls.Add($logListBox)
@@ -1541,6 +1575,7 @@ $script:LogListBox = $logListBox
 $startButton.Add_Click({
     try {
         $startButton.Enabled = $false
+        $script:AllowMaterialClicksForCapture = [bool]$materialCheckBox.Checked
         $summary = Invoke-OneClickCapture -FriendName $friendTextBox.Text -Count ([int]$countInput.Value) -RequestedOutputDir $OutputDir
         [void][System.Windows.Forms.MessageBox]::Show(("Finished. Output:`n{0}" -f $summary.outputDir), "Done", "OK", "Information")
     }

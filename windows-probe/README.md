@@ -296,13 +296,15 @@ powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat
 
 ## Friend Recent One-Click Capture
 
-主入口是 `tools/windows_wechat_friend_recent_oneclick.ps1`。用户只需要手动打开目标好友的朋友圈页面，然后点 `Start`。软件会用 Windows OCR 定位可见朋友圈候选，再尽力复制正文、保存图片/视频，并对可能的转发卡片尝试保存 URL；某条失败时记录为 `partial/failed` 并继续处理后续朋友圈。
+主入口是 `tools/windows_wechat_friend_recent_oneclick.ps1`。用户只需要手动打开目标好友的朋友圈页面，然后点 `Start`。软件会用 Windows OCR 定位可见朋友圈候选，再尽力复制正文；某条失败时记录为 `partial/failed` 并继续处理后续朋友圈。图片、视频、链接卡片点击默认关闭，避免定位不稳时误点。
 
 前置条件：
 
 1. 手动打开 Windows 微信。
 2. 从群聊或联系人资料页进入目标好友朋友圈主页。
 3. 让微信窗口停在要采集的最新朋友圈起始位置。
+
+脚本默认会拒绝在宽的微信聊天主窗口里执行；`ValidateOnly` 里的 `looksLikeMomentsWindow` 应为 `true`。如果它是 `false`，说明还停在聊天/群聊窗口，需要先打开好友朋友圈窗口。
 
 启动最近五条朋友圈一键保存：
 
@@ -319,13 +321,20 @@ powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat
 只验证当前页 OCR 候选和保存计划，不复制、不点击素材、不滚动：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_friend_recent_oneclick.ps1 -DisplayName "AAA方雯直播号" -TargetMoments 5 -MaxPages 1 -DryRun -RunNow
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_friend_recent_oneclick.ps1 -DisplayName "AAA方雯直播号" -TargetMoments 5 -PreviewOnly -RunNow
+```
+
+确认 overlay 里的红点和绿框稳定后，才开启素材/链接卡片点击：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_friend_recent_oneclick.ps1 -DisplayName "AAA方雯直播号" -TargetMoments 5 -RunNow -AllowMaterialClicks
 ```
 
 界面只保留必要输入：
 
 - `Friend name`: 好友名，仅用于输出目录和 `profile.json`。
 - `Recent posts`: 要保存的最近朋友圈条数。
+- `Save media/link cards (experimental)`: 默认关闭；开启后才会点击图片、视频和链接卡片。
 - `Start`: 开始自动扫描和保存。
 
 无界面健康检查：
@@ -347,7 +356,7 @@ powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat
 - OCR 默认使用 2x 放大图提升小字识别率，但输出坐标会折回原始微信窗口坐标。
 - 边识别边采集：先处理当前可见页，再自动向下滚动，直到处理到目标条数或达到页数上限。
 - OCR 只用于定位点位，不作为正文最终数据源；正文仍通过朋友圈正文区域右键 `复制` 保存。
-- OCR 给出素材/卡片点位后，脚本先尝试复制 URL，如果能拿到 URL 就保存为 `external_url` 并跳过媒体下载；拿不到 URL 时再尝试按本地图片/视频保存。
+- OCR 给出素材/卡片点位后，默认只记录点位，不点击；显式开启 `-AllowMaterialClicks` 后，脚本才会先尝试复制 URL，如果能拿到 URL 就保存为 `external_url` 并跳过媒体下载，拿不到 URL 时再尝试按本地图片/视频保存。
 - 每次 OCR 定位会输出 `locator_overlay.png`，蓝框表示时间线锚点，绿框表示扩展后的候选朋友圈文字区域，蓝点是正文复制点，红点是素材/卡片点击点；JSON 中的 `rawBounds` 保留 OCR 原始文字行区域。
 - 重复文案或重复素材指纹不会直接丢弃候选，只会在事件和 `detected_candidates.json` 里标记 `textDuplicate/materialDuplicate`，避免电商号重复商品文案导致漏抓最近 N 条。
 - 对每条朋友圈尽力处理；正文、URL、媒体某一部分失败不会中断整批任务，最终单条状态写为 `captured`、`partial` 或 `failed`。
