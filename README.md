@@ -33,6 +33,7 @@ Windows 端已加入一组微信朋友圈自动化探针，工程说明见 [wind
 主要脚本：
 
 - [tools/windows_wechat_save_viewer_batch.ps1](tools/windows_wechat_save_viewer_batch.ps1): 从当前图片查看器批量保存图片。
+- [tools/windows_wechat_init_capture_session.ps1](tools/windows_wechat_init_capture_session.ps1): 初始化 `profile.json` 和 `moments/{id}/moment.json` 两层采集目录。
 - [tools/windows_wechat_copy_visible_text.ps1](tools/windows_wechat_copy_visible_text.ps1): 右键复制当前可见朋友圈正文。
 - [tools/windows_wechat_copy_link_url.ps1](tools/windows_wechat_copy_link_url.ps1): 右键复制转发链接/视频号卡片 URL。
 - [tools/windows_wechat_probe.ps1](tools/windows_wechat_probe.ps1): 枚举 UIA 树并按隐私策略保存探针结果。

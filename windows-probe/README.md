@@ -254,21 +254,45 @@ powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat
 当前结构化记录参考：
 
 ```text
+windows-probe/schemas/profile_capture_v1.schema.json
 windows-probe/schemas/moment_capture_v1.schema.json
 ```
 
-建议的单条朋友圈目录结构：
+建议的好友主页采集目录结构：
 
 ```text
-moment_xxx/
-  moment.json
-  text/copied_text.txt
-  media/image_001.jpg
-  media/video_001.mp4
-  links/link_001.txt
+capture-runs/profile_yyyymmdd_hhmmss/
+  profile.json
+  moments_index.jsonl
+  profile-assets/
+  moments/
+    moment_xxx/
+      moment.json
+      text/copied_text.txt
+      media/image_001.jpg
+      media/video_001.mp4
+      links/link_001.txt
+      evidence/
 ```
 
-其中 `moment.json` 的 `materials[]` 可以同时包含本地媒体和 `external_url`。如果素材是转发视频号或转发链接，应只生成 `external_url` 条目，不尝试下载视频内容。
+其中：
+
+- `profile.json`: 保存好友主页级元信息，例如昵称、备注名、头像、封面、可见状态、采集会话 id。
+- `moments/{id}/moment.json`: 保存单条朋友圈元信息。
+- `moment.json` 的 `materials[]` 可以同时包含本地媒体和 `external_url`。
+- 如果素材是转发视频号或转发链接，应只生成 `external_url` 条目，不尝试下载视频内容。
+
+初始化采集目录：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_init_capture_session.ps1 -DisplayName "friend-name"
+```
+
+初始化并创建一个单条朋友圈骨架：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_init_capture_session.ps1 -DisplayName "friend-name" -MomentId "moment_001" -MomentType image_set
+```
 
 ## URL Copy Probe
 

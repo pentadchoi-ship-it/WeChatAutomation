@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "profile_capture_v1.schema.json",
+  "title": "WeChat Moments Profile Capture V1",
+  "type": "object",
+  "required": ["schemaVersion", "source", "capturedAt", "captureSessionId", "profile", "moments"],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "source": {
+      "type": "string",
+      "const": "wechat_windows_moments"
+    },
+    "capturedAt": {
+      "type": "string"
+    },
+    "captureSessionId": {
+      "type": "string"
+    },
+    "client": {
+      "type": "object",
+      "properties": {
+        "app": { "type": "string" },
+        "version": { "type": "string" },
+        "platform": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "profile": {
+      "type": "object",
+      "required": ["displayName"],
+      "properties": {
+        "displayName": { "type": "string" },
+        "profileId": { "type": "string" },
+        "remarkName": { "type": "string" },
+        "alias": { "type": "string" },
+        "profileUrlFile": { "type": "string" },
+        "profileUrlLength": { "type": "integer" },
+        "profileUrlSha256": { "type": "string" },
+        "visibilityStatus": {
+          "enum": ["unknown", "visible", "no_moments", "permission_denied", "load_failed"]
+        },
+        "avatar": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/localMaterial" }
+          ]
+        },
+        "cover": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/localMaterial" }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "moments": {
+      "type": "object",
+      "required": ["directory", "indexFile"],
+      "properties": {
+        "directory": { "type": "string" },
+        "indexFile": { "type": "string" },
+        "count": { "type": "integer" },
+        "capturedCount": { "type": "integer" },
+        "skippedCount": { "type": "integer" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["postId", "momentFile"],
+            "properties": {
+              "postId": { "type": "string" },
+              "momentFile": { "type": "string" },
+              "status": { "type": "string" },
+              "postedAtText": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "capture": {
+      "type": "object",
+      "properties": {
+        "method": { "type": "string" },
+        "operator": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "localMaterial": {
+      "type": "object",
+      "required": ["path", "length", "sha256"],
+      "properties": {
+        "path": { "type": "string" },
+        "length": { "type": "integer" },
+        "sha256": { "type": "string" },
+        "captureMethod": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
