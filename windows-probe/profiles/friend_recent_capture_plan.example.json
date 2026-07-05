@@ -1,0 +1,80 @@
+﻿{
+    "schemaVersion":  1,
+    "profile":  {
+                    "displayName":  "friend-name",
+                    "profileId":  "",
+                    "remarkName":  "",
+                    "alias":  "",
+                    "visibilityStatus":  "visible"
+                },
+    "capture":  {
+                    "sessionId":  "",
+                    "closeViewerAfterMedia":  true,
+                    "captureViewportScreenshot":  false,
+                    "itemWaitMilliseconds":  900,
+                    "scrollWaitMilliseconds":  1200
+                },
+    "pages":  [
+                  {
+                      "pageId":  "page_001",
+                      "moments":  [
+                                      {
+                                          "postId":  "moment_001",
+                                          "postedAtText":  "yesterday",
+                                          "postType":  "image_set",
+                                          "textPoint":  {
+                                                            "x":  300,
+                                                            "y":  545
+                                                        },
+                                          "media":  [
+                                                        {
+                                                            "id":  "image_group_001",
+                                                            "kind":  "image",
+                                                            "openPoint":  {
+                                                                              "x":  180,
+                                                                              "y":  600
+                                                                          },
+                                                            "saveMode":  "viewer_batch",
+                                                            "maxItems":  9,
+                                                            "baseName":  "image",
+                                                            "extension":  "jpg"
+                                                        }
+                                                    ],
+                                          "links":  [
+
+                                                    ]
+                                      },
+                                      {
+                                          "postId":  "moment_002",
+                                          "postedAtText":  "yesterday",
+                                          "postType":  "external_url",
+                                          "textPoint":  {
+                                                            "x":  300,
+                                                            "y":  735
+                                                        },
+                                          "media":  [
+
+                                                    ],
+                                          "links":  [
+                                                        {
+                                                            "id":  "link_001",
+                                                            "providerHint":  "video_account",
+                                                            "title":  "",
+                                                            "point":  {
+                                                                          "x":  240,
+                                                                          "y":  790
+                                                                      }
+                                                        }
+                                                    ]
+                                      }
+                                  ],
+                      "afterScroll":  {
+                                          "x":  280,
+                                          "y":  560,
+                                          "wheelCount":  4,
+                                          "wheelDelta":  -360,
+                                          "waitMilliseconds":  1200
+                                      }
+                  }
+              ]
+}

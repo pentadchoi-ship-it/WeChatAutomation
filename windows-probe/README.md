@@ -294,9 +294,75 @@ powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat
 powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_init_capture_session.ps1 -DisplayName "friend-name" -MomentId "moment_001" -MomentType image_set
 ```
 
+## Friend Recent Batch Capture MVP
+
+`tools/windows_wechat_capture_friend_recent.ps1` 用来批量保存某个特定好友近期朋友圈。当前版本是“计划驱动”：先手动打开该好友朋友圈主页，并在计划文件中标出可见页面里每条朋友圈的正文、素材、链接卡片坐标；脚本再按计划逐条复制正文、保存本地图片/视频、复制外部链接 URL，并输出结构化目录。
+
+生成或刷新计划模板：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_capture_friend_recent.ps1 -CreatePlanTemplate
+```
+
+示例计划：
+
+```text
+windows-probe/profiles/friend_recent_capture_plan.example.json
+```
+
+计划字段约定：
+
+- `profile.displayName`: 当前采集的好友昵称或备注。
+- `pages[].moments[].textPoint`: 朋友圈正文区域的窗口相对坐标，用于右键 `复制` 正文；折叠长文本先直接复制折叠态。
+- `pages[].moments[].media[].openPoint`: 图片九宫格或直接发布视频的入口坐标；脚本点击后进入查看器，再用 `Ctrl+S` 批量保存。
+- `pages[].moments[].links[].point`: 转发视频号、公众号文章、网页链接、小程序、音乐、商品、位置等卡片坐标；脚本只复制并保存 URL，不下载外部内容。
+- `pages[].afterScroll`: 当前页采完后滚到下一屏的鼠标滚轮参数；只有计划中还有下一页时才会执行。
+
+先 dry-run 校验计划，不触碰微信窗口、不写采集产物：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_capture_friend_recent.ps1 -PlanPath .\WeChatAutomation\windows-probe\profiles\friend_recent_capture_plan.example.json -MaxPages 1 -MaxMoments 2 -DryRun
+```
+
+实际采集前置条件：
+
+1. 手动打开 Windows 微信，并停在目标好友的朋友圈主页。
+2. 确认窗口大小和计划坐标一致。
+3. 计划里的 `media.openPoint` 指向本地图片/直接发布视频；转发视频号和转发链接只放进 `links[]`。
+
+实际采集：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_capture_friend_recent.ps1 -PlanPath .\WeChatAutomation\windows-probe\profiles\friend_recent_capture_plan.example.json -MaxPages 3 -MaxMoments 20
+```
+
+输出结构：
+
+```text
+windows-probe/capture-runs/{sessionId}/
+  profile.json
+  capture_session_summary.json
+  moments_index.jsonl
+  profile-assets/
+  moments/
+    moment_001/
+      moment.json
+      text/copied_text.txt
+      media/image_001.jpg
+      links/link_001/url.txt
+      evidence/
+```
+
+当前安全边界：
+
+- 不点击发表、发送、点赞、评论。
+- 不读微信数据库、不 hook、不逆向协议。
+- 不下载转发视频号、公众号文章、网页链接、小程序等外部内容，只保存 URL 引用。
+- 运行产物在 `windows-probe/*-runs/` 下，已由各目录 `.gitignore` 忽略，避免把私人素材提交进仓库。
+
 ## URL Copy Probe
 
-转发视频号、公众号文章、网页链接、小程序卡片等，应保存为 URL 引用：
+转发视频号、公众号文章、网页链接、小程序、音乐、商品、位置等卡片，应保存为 URL 引用：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_copy_link_url.ps1 -X 220 -Y 480 -ProviderHint video_account
@@ -305,7 +371,7 @@ powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat
 当前链路：
 
 ```text
-朋友圈列表 -> 右键链接/视频号卡片区域 -> 点击菜单中的复制链接/复制 -> 读取剪贴板 -> 抽取 URL -> 保存 url.txt 和 link_reference.json -> 恢复原剪贴板
+朋友圈列表 -> 右键链接/视频号/小程序等卡片区域 -> 点击菜单中的复制链接/复制 -> 读取剪贴板 -> 抽取 URL -> 保存 url.txt 和 link_reference.json -> 恢复原剪贴板
 ```
 
 如果用户已手动复制链接到剪贴板，也可以只解析当前剪贴板：

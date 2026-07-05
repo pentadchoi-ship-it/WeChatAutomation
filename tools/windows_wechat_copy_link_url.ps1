@@ -4,7 +4,7 @@ param(
     [int]$Y = -1,
     [int]$MenuItemOffsetX = 38,
     [int]$MenuItemOffsetY = 28,
-    [ValidateSet("unknown", "video_account", "article", "link", "mini_program")]
+    [ValidateSet("unknown", "video_account", "article", "link", "mini_program", "music", "product", "location")]
     [string]$ProviderHint = "unknown",
     [string]$Title = "",
     [string]$OutputDir = "",
