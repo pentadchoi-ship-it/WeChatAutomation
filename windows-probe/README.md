@@ -296,7 +296,7 @@ powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat
 
 ## Friend Recent One-Click Capture
 
-主入口是 `tools/windows_wechat_friend_recent_oneclick.ps1`。用户只需要手动打开目标好友的朋友圈页面，然后点 `Start`。软件会自动从当前页面开始扫描最近 N 条朋友圈，尽力复制正文、保存图片/视频，并对可能的转发卡片尝试保存 URL；某条失败时记录为 `partial/failed` 并继续处理后续朋友圈。
+主入口是 `tools/windows_wechat_friend_recent_oneclick.ps1`。用户只需要手动打开目标好友的朋友圈页面，然后点 `Start`。软件会用 Windows OCR 定位可见朋友圈候选，再尽力复制正文、保存图片/视频，并对可能的转发卡片尝试保存 URL；某条失败时记录为 `partial/failed` 并继续处理后续朋友圈。
 
 前置条件：
 
@@ -322,11 +322,19 @@ powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat
 powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_friend_recent_oneclick.ps1 -DisplayName "AAA方雯直播号" -TargetMoments 5 -ValidateOnly
 ```
 
+单独验证 OCR 定位器：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_ocr_locator.ps1 -ValidateOnly
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_ocr_locator.ps1 -CaptureCurrentWindow -TargetMoments 5
+```
+
 当前识别策略：
 
-- 通过窗口截图和右键复制探测正文点位，不读取数据库。
+- 通过 Windows OCR 读取当前窗口截图中的文字框，用日期/时间锚点和垂直间距分组出候选朋友圈，不读取数据库。
 - 边识别边采集：先处理当前可见页，再自动向下滚动，直到处理到目标条数或达到页数上限。
-- 图片/视频/链接区域用截图色块做启发式判断；先尝试复制 URL，如果能拿到 URL 就保存为 `external_url` 并跳过媒体下载；拿不到 URL 时再尝试按本地图片/视频保存。
+- OCR 只用于定位点位，不作为正文最终数据源；正文仍通过朋友圈正文区域右键 `复制` 保存。
+- OCR 给出素材/卡片点位后，脚本先尝试复制 URL，如果能拿到 URL 就保存为 `external_url` 并跳过媒体下载；拿不到 URL 时再尝试按本地图片/视频保存。
 - 对每条朋友圈尽力处理；正文、URL、媒体某一部分失败不会中断整批任务，最终单条状态写为 `captured`、`partial` 或 `failed`。
 
 ### Debug Plan Capture
@@ -385,6 +393,7 @@ windows-probe/capture-runs/{sessionId}/
 - 不下载转发视频号、公众号文章、网页链接、小程序等外部内容，只保存 URL 引用。
 - 运行产物在 `windows-probe/*-runs/` 下，已由各目录 `.gitignore` 忽略，避免把私人素材提交进仓库。
 - 自动扫描截图在 `windows-probe/oneclick-runs/` 下，已被忽略。
+- OCR 定位调试输出在 `windows-probe/ocr-runs/` 下，已被忽略。
 - 标定器 `tools/windows_wechat_friend_recent_calibrator.ps1` 仅作为调试工具保留，日常不建议使用。
 
 ## URL Copy Probe

@@ -4,6 +4,7 @@ param(
     [int]$TargetMoments = 5,
     [string]$OutputDir = "",
     [int]$MaxPages = 8,
+    [string]$OcrLanguageTag = "zh-Hans-CN",
     [switch]$DryRun,
     [switch]$ValidateOnly
 )
@@ -701,6 +702,70 @@ function Test-UsefulMomentText {
     return $true
 }
 
+function Test-PointObject {
+    param([AllowNull()]$Point)
+
+    return ($null -ne $Point -and
+        $null -ne (Get-ObjectProperty -InputObject $Point -Name "x") -and
+        $null -ne (Get-ObjectProperty -InputObject $Point -Name "y"))
+}
+
+function Invoke-OcrLocator {
+    param(
+        [Parameter(Mandatory = $true)][string]$ScreenshotPath,
+        [Parameter(Mandatory = $true)][string]$PageDir,
+        [Parameter(Mandatory = $true)][int]$TargetRemaining,
+        [Parameter(Mandatory = $true)][string]$LanguageTag
+    )
+
+    $locatorScript = Join-Path $PSScriptRoot "windows_wechat_ocr_locator.ps1"
+    $ocrDir = Join-Path $PageDir "ocr"
+    $locatorParams = @{
+        ScreenshotPath = $ScreenshotPath
+        OutputDir = $ocrDir
+        TargetMoments = [Math]::Max(1, $TargetRemaining)
+        LanguageTag = $LanguageTag
+    }
+    & $locatorScript @locatorParams | Out-Null
+
+    $resultPath = Join-Path $ocrDir "locator_result.json"
+    if (-not (Test-Path -LiteralPath $resultPath)) {
+        throw "OCR locator did not produce locator_result.json."
+    }
+
+    return Get-Content -LiteralPath $resultPath -Encoding UTF8 -Raw | ConvertFrom-Json
+}
+
+function New-OcrMaterialCandidate {
+    param(
+        [Parameter(Mandatory = $true)]$Point,
+        [Parameter(Mandatory = $true)][string]$ScreenshotPath
+    )
+
+    if (-not (Test-PointObject -Point $Point)) {
+        return $null
+    }
+
+    $bitmap = [System.Drawing.Bitmap]::FromFile($ScreenshotPath)
+    try {
+        $x = [int](Get-IntProperty -InputObject $Point -Name "x")
+        $y = [int](Get-IntProperty -InputObject $Point -Name "y")
+        if ($x -lt 0 -or $y -lt 0 -or $x -ge $bitmap.Width -or $y -ge $bitmap.Height) {
+            return $null
+        }
+
+        return [pscustomobject][ordered]@{
+            point = New-PointObject -X $x -Y $y
+            score = 1.0
+            fingerprint = Get-BitmapRegionHash -Bitmap $bitmap -CenterX $x -CenterY $y
+            source = "ocr_locator"
+        }
+    }
+    finally {
+        $bitmap.Dispose()
+    }
+}
+
 function Get-VisibleMomentCandidates {
     param(
         [Parameter(Mandatory = $true)][string]$FriendName,
@@ -708,84 +773,97 @@ function Get-VisibleMomentCandidates {
         [Parameter(Mandatory = $true)][string]$ScreenshotPath,
         [Parameter(Mandatory = $true)]$Bounds,
         [Parameter(Mandatory = $true)]$SeenTextHashes,
-        [Parameter(Mandatory = $true)]$SeenMaterialHashes
+        [Parameter(Mandatory = $true)]$SeenMaterialHashes,
+        [Parameter(Mandatory = $true)][int]$TargetRemaining,
+        [Parameter(Mandatory = $true)][string]$LanguageTag
     )
 
-    $minY = [int]([Math]::Max(145, $Bounds.height * 0.18))
-    $textPoints = @(Find-TextProbeCandidates -ScreenshotPath $ScreenshotPath -MinY $minY)
+    $locator = Invoke-OcrLocator -ScreenshotPath $ScreenshotPath -PageDir $PageDir -TargetRemaining $TargetRemaining -LanguageTag $LanguageTag
+    $ocrCandidates = @(Get-ArrayProperty -InputObject $locator -Name "candidates")
     $moments = New-Object System.Collections.ArrayList
 
-    Add-Log ("Found {0} text probe candidates." -f $textPoints.Count)
-    foreach ($point in $textPoints) {
-        try {
-            $probe = Invoke-TextProbe -X ([int]$point.x) -Y ([int]$point.y) -ProbeDir $PageDir
-            if ($null -eq $probe) {
-                continue
-            }
-            if (-not (Test-UsefulMomentText -Text $probe.text -FriendName $FriendName)) {
-                continue
-            }
-            if ($SeenTextHashes.ContainsKey($probe.sha256)) {
-                continue
-            }
-            $SeenTextHashes[$probe.sha256] = $true
+    Add-Log ("OCR locator found {0} candidates." -f $ocrCandidates.Count)
+    foreach ($ocrCandidate in $ocrCandidates) {
+        $textProbe = $null
+        $textAttempted = $false
+        $textAttemptStatus = "not_attempted"
+        $material = $null
+        $textPoint = Get-ObjectProperty -InputObject $ocrCandidate -Name "textPoint"
+        $materialPoint = Get-ObjectProperty -InputObject $ocrCandidate -Name "materialPoint"
 
-            [void]$moments.Add([pscustomobject][ordered]@{
-                y = [int]$probe.y
-                textProbe = $probe
-                material = $null
-                detection = "text"
-            })
+        if (Test-PointObject -Point $materialPoint) {
+            $material = New-OcrMaterialCandidate -Point $materialPoint -ScreenshotPath $ScreenshotPath
+            if ($null -ne $material -and -not [string]::IsNullOrWhiteSpace($material.fingerprint)) {
+                if ($SeenMaterialHashes.ContainsKey($material.fingerprint)) {
+                    $material = $null
+                }
+                else {
+                    $SeenMaterialHashes[$material.fingerprint] = $true
+                }
+            }
         }
-        catch {
-            Add-Log ("Text probe skipped at y={0}: {1}" -f $point.y, $_.Exception.Message)
-        }
-    }
 
-    $orderedTextMoments = @($moments | Sort-Object y)
-    for ($i = 0; $i -lt $orderedTextMoments.Count; $i++) {
-        $nextY = if ($i -lt ($orderedTextMoments.Count - 1)) {
-            [int]$orderedTextMoments[$i + 1].y
+        if (Test-PointObject -Point $textPoint) {
+            $textAttempted = $true
+            if ($DryRun) {
+                $textAttemptStatus = "dry_run"
+                $textProbe = [pscustomobject][ordered]@{
+                    x = Get-IntProperty -InputObject $textPoint -Name "x"
+                    y = Get-IntProperty -InputObject $textPoint -Name "y"
+                    length = Get-IntProperty -InputObject $ocrCandidate -Name "textLength"
+                    sha256 = ""
+                    textFile = ""
+                    text = ""
+                }
+            }
+            else {
+                try {
+                    $probe = Invoke-TextProbe -X (Get-IntProperty -InputObject $textPoint -Name "x") -Y (Get-IntProperty -InputObject $textPoint -Name "y") -ProbeDir $PageDir
+                    if ($null -eq $probe) {
+                        $textAttemptStatus = "copy_failed"
+                    }
+                    elseif (-not (Test-UsefulMomentText -Text $probe.text -FriendName $FriendName)) {
+                        $textAttemptStatus = "not_moment_text"
+                    }
+                    elseif ($SeenTextHashes.ContainsKey($probe.sha256)) {
+                        $textAttemptStatus = "duplicate"
+                    }
+                    else {
+                        $SeenTextHashes[$probe.sha256] = $true
+                        $textProbe = $probe
+                        $textAttemptStatus = "copied"
+                    }
+                }
+                catch {
+                    $textAttemptStatus = "failed: $($_.Exception.Message)"
+                    Add-Log ("OCR text point failed at y={0}: {1}" -f (Get-IntProperty -InputObject $textPoint -Name "y"), $_.Exception.Message)
+                }
+            }
+        }
+
+        if ($null -eq $textProbe -and $null -eq $material) {
+            continue
+        }
+
+        $candidateY = if ($null -ne $textProbe) {
+            [int]$textProbe.y
+        }
+        elseif ($null -ne $material) {
+            [int]$material.point.y
         }
         else {
-            [int]($Bounds.height - 35)
-        }
-        $candidate = Find-MaterialCandidate -ScreenshotPath $ScreenshotPath -AnchorY ([int]$orderedTextMoments[$i].y) -NextAnchorY $nextY -MinY $minY
-        if ($null -ne $candidate) {
-            $orderedTextMoments[$i].material = $candidate
-            if (-not [string]::IsNullOrWhiteSpace($candidate.fingerprint)) {
-                $SeenMaterialHashes[$candidate.fingerprint] = $true
-            }
-        }
-    }
-
-    $allMaterials = @(Find-AllMaterialCandidates -ScreenshotPath $ScreenshotPath -MinY $minY)
-    foreach ($material in $allMaterials) {
-        if ([string]::IsNullOrWhiteSpace($material.fingerprint)) {
-            continue
-        }
-        if ($SeenMaterialHashes.ContainsKey($material.fingerprint)) {
-            continue
+            0
         }
 
-        $nearTextMoment = $false
-        foreach ($moment in $orderedTextMoments) {
-            $dy = [Math]::Abs([int]$moment.y - [int]$material.point.y)
-            if ($dy -lt 135) {
-                $nearTextMoment = $true
-                break
-            }
-        }
-        if ($nearTextMoment) {
-            continue
-        }
-
-        $SeenMaterialHashes[$material.fingerprint] = $true
         [void]$moments.Add([pscustomobject][ordered]@{
-            y = [int]$material.point.y
-            textProbe = $null
+            y = $candidateY
+            textProbe = $textProbe
+            textAttempted = $textAttempted
+            textAttemptStatus = $textAttemptStatus
             material = $material
-            detection = "material_only"
+            detection = "ocr_locator"
+            ocrCandidateId = Get-StringProperty -InputObject $ocrCandidate -Name "candidateId"
+            locatorConfidence = Get-StringProperty -InputObject $ocrCandidate -Name "locatorConfidence"
         })
     }
 
@@ -1116,6 +1194,14 @@ function Save-DetectedMoment {
             Add-CaptureEvent -Events $Events -Type "text" -PostId $postId -Status "failed" -Detail $_.Exception.Message
         }
     }
+    elseif ([bool](Get-ObjectProperty -InputObject $Candidate -Name "textAttempted" -Default $false)) {
+        $actionCount += 1
+        $textAttemptStatus = Get-StringProperty -InputObject $Candidate -Name "textAttemptStatus" -Default "copy_failed"
+        if ($textAttemptStatus -notin @("duplicate", "not_moment_text")) {
+            $hardFailureCount += 1
+        }
+        Add-CaptureEvent -Events $Events -Type "text" -PostId $postId -Status $textAttemptStatus
+    }
 
     if ($hadMaterialCandidate) {
         $point = $Candidate.material.point
@@ -1236,7 +1322,7 @@ function Invoke-OneClickCapture {
         Save-WindowScreenshot -Bounds $bounds -Path $screenshotPath
 
         Add-Log ("Scanning {0}..." -f $pageId)
-        $candidates = @(Get-VisibleMomentCandidates -FriendName $FriendName -PageDir $pageDir -ScreenshotPath $screenshotPath -Bounds $bounds -SeenTextHashes $seenTextHashes -SeenMaterialHashes $seenMaterialHashes)
+        $candidates = @(Get-VisibleMomentCandidates -FriendName $FriendName -PageDir $pageDir -ScreenshotPath $screenshotPath -Bounds $bounds -SeenTextHashes $seenTextHashes -SeenMaterialHashes $seenMaterialHashes -TargetRemaining ($Count - $savedCount) -LanguageTag $OcrLanguageTag)
         Save-Json -Value ([pscustomobject][ordered]@{
             pageId = $pageId
             screenshot = $screenshotPath
@@ -1321,6 +1407,9 @@ if ($ValidateOnly) {
     $process = $null
     $bounds = $null
     $weixinRunning = $false
+    $ocrAvailable = $false
+    $ocrLanguages = @()
+    $ocrError = ""
     try {
         $process = Get-WeixinProcess
         $bounds = Get-WindowBounds $process.MainWindowHandle
@@ -1329,11 +1418,24 @@ if ($ValidateOnly) {
     catch {
         $weixinRunning = $false
     }
+    try {
+        $ocrScript = Join-Path $PSScriptRoot "windows_wechat_ocr_locator.ps1"
+        $ocrValidation = (& $ocrScript -ValidateOnly | ConvertFrom-Json)
+        $ocrAvailable = [bool]$ocrValidation.ok
+        $ocrLanguages = @($ocrValidation.availableLanguages)
+    }
+    catch {
+        $ocrAvailable = $false
+        $ocrError = $_.Exception.Message
+    }
     [pscustomobject][ordered]@{
         ok = $true
         canLoadWinForms = $true
         weixinRunning = $weixinRunning
         windowBounds = $bounds
+        ocrAvailable = $ocrAvailable
+        ocrLanguages = $ocrLanguages
+        ocrError = $ocrError
     } | ConvertTo-Json -Depth 8
     return
 }
