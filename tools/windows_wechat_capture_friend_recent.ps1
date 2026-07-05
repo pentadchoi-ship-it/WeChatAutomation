@@ -472,6 +472,8 @@ function New-ProfileObject {
             indexFile = "moments_index.jsonl"
             count = 0
             capturedCount = 0
+            partialCount = 0
+            failedCount = 0
             skippedCount = 0
             items = @()
         }
@@ -876,7 +878,7 @@ foreach ($page in $pages) {
             $moment.status = "skipped"
         }
         else {
-            $moment.status = "partial"
+            $moment.status = "failed"
         }
 
         if (-not $DryRun) {
@@ -921,6 +923,8 @@ foreach ($page in $pages) {
 $profileItems = @(Get-ObjectProperty -InputObject $profile.moments -Name "items" -Default @())
 $profile.moments.count = $profileItems.Count
 $profile.moments.capturedCount = @($profileItems | Where-Object { $_.status -eq "captured" }).Count
+$profile.moments.partialCount = @($profileItems | Where-Object { $_.status -eq "partial" }).Count
+$profile.moments.failedCount = @($profileItems | Where-Object { $_.status -eq "failed" }).Count
 $profile.moments.skippedCount = @($profileItems | Where-Object { $_.status -eq "skipped" }).Count
 
 $summary = [pscustomobject][ordered]@{

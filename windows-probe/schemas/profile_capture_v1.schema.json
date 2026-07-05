@@ -65,6 +65,8 @@
         "indexFile": { "type": "string" },
         "count": { "type": "integer" },
         "capturedCount": { "type": "integer" },
+        "partialCount": { "type": "integer" },
+        "failedCount": { "type": "integer" },
         "skippedCount": { "type": "integer" },
         "items": {
           "type": "array",

@@ -294,23 +294,48 @@ powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat
 powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_init_capture_session.ps1 -DisplayName "friend-name" -MomentId "moment_001" -MomentType image_set
 ```
 
-## Friend Recent Batch Capture MVP
+## Friend Recent One-Click Capture
 
-`tools/windows_wechat_capture_friend_recent.ps1` 用来批量保存某个特定好友近期朋友圈。当前版本是“计划驱动”：先手动打开该好友朋友圈主页，并在计划文件中标出可见页面里每条朋友圈的正文、素材、链接卡片坐标；脚本再按计划逐条复制正文、保存本地图片/视频、复制外部链接 URL，并输出结构化目录。
+主入口是 `tools/windows_wechat_friend_recent_oneclick.ps1`。用户只需要手动打开目标好友的朋友圈页面，然后点 `Start`。软件会自动从当前页面开始扫描最近 N 条朋友圈，尽力复制正文、保存图片/视频，并对可能的转发卡片尝试保存 URL；某条失败时记录为 `partial/failed` 并继续处理后续朋友圈。
 
-生成或刷新计划模板：
+前置条件：
+
+1. 手动打开 Windows 微信。
+2. 从群聊或联系人资料页进入目标好友朋友圈主页。
+3. 让微信窗口停在要采集的最新朋友圈起始位置。
+
+启动最近五条朋友圈一键保存：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_friend_recent_oneclick.ps1 -DisplayName "AAA方雯直播号" -TargetMoments 5
+```
+
+界面只保留必要输入：
+
+- `Friend name`: 好友名，仅用于输出目录和 `profile.json`。
+- `Recent posts`: 要保存的最近朋友圈条数。
+- `Start`: 开始自动扫描和保存。
+
+无界面健康检查：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_friend_recent_oneclick.ps1 -DisplayName "AAA方雯直播号" -TargetMoments 5 -ValidateOnly
+```
+
+当前识别策略：
+
+- 通过窗口截图和右键复制探测正文点位，不读取数据库。
+- 边识别边采集：先处理当前可见页，再自动向下滚动，直到处理到目标条数或达到页数上限。
+- 图片/视频/链接区域用截图色块做启发式判断；先尝试复制 URL，如果能拿到 URL 就保存为 `external_url` 并跳过媒体下载；拿不到 URL 时再尝试按本地图片/视频保存。
+- 对每条朋友圈尽力处理；正文、URL、媒体某一部分失败不会中断整批任务，最终单条状态写为 `captured`、`partial` 或 `failed`。
+
+### Debug Plan Capture
+
+底层计划驱动采集脚本仍保留，用于调试、复现和手工兜底：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\WeChatAutomation\tools\windows_wechat_capture_friend_recent.ps1 -CreatePlanTemplate
 ```
-
-示例计划：
-
-```text
-windows-probe/profiles/friend_recent_capture_plan.example.json
-```
-
-计划字段约定：
 
 - `profile.displayName`: 当前采集的好友昵称或备注。
 - `pages[].moments[].textPoint`: 朋友圈正文区域的窗口相对坐标，用于右键 `复制` 正文；折叠长文本先直接复制折叠态。
@@ -359,6 +384,8 @@ windows-probe/capture-runs/{sessionId}/
 - 不读微信数据库、不 hook、不逆向协议。
 - 不下载转发视频号、公众号文章、网页链接、小程序等外部内容，只保存 URL 引用。
 - 运行产物在 `windows-probe/*-runs/` 下，已由各目录 `.gitignore` 忽略，避免把私人素材提交进仓库。
+- 自动扫描截图在 `windows-probe/oneclick-runs/` 下，已被忽略。
+- 标定器 `tools/windows_wechat_friend_recent_calibrator.ps1` 仅作为调试工具保留，日常不建议使用。
 
 ## URL Copy Probe
 

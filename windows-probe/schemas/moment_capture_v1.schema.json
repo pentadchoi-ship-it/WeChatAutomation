@@ -26,7 +26,7 @@
       "type": "string"
     },
     "status": {
-      "enum": ["captured", "partial", "skipped", "unavailable", "permission_denied", "load_failed", "draft"]
+      "enum": ["captured", "partial", "failed", "skipped", "unavailable", "permission_denied", "load_failed", "draft"]
     },
     "postType": {
       "enum": ["unknown", "pure_text", "image_set", "video", "external_url", "mixed"]
